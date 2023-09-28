@@ -41,13 +41,53 @@ function love.load()
   particleImageData:setPixel(0,0,1.0,1.0,1.0,255)
   particleImage = love.graphics.newImage(particleImageData)
   particleSystem = love.graphics.newParticleSystem(particleImage, 1024)
+  
+  -- mic input
+  local devices = love.audio.getRecordingDevices( )
+  for i=1, #devices do
+    local mic = devices[i]
+    print("Audio Device " .. i)
+    print("  bit depth:  ", mic:getBitDepth())
+    print("  num chanels:", mic:getChannelCount())
+    print("  mic name:   ", mic:getName())
+    print("  sample rate:", mic:getSampleRate())
+  end
+  
+  local selectedDevice = 1
+  mic = devices[selectedDevice]
+
+  if mic then
+    mic_recording = mic:start(256)
+    print("\nAudio device " .. selectedDevice .. " recording started.\n")
+  end
 end
 
 function love.update(dt)
   local degToRad = math.pi / 180
   
   particleSystem:setParticleLifetime(1.0, 1.5)
-  particleSystem:setEmissionRate(20.0)
+  
+  averageDelta = 0.0
+  
+  if mic_recording then
+    local soundData = mic:getData()
+    --local pointer = soundData:getFFIPointer()
+    if soundData then
+      local lastSample = soundData:getSample(0)
+      local sumDelta = 0.0
+      local sampleCount = soundData:getSampleCount()
+      for i=1, sampleCount-1 do
+        local sample = soundData:getSample(i)
+        local delta = math.abs(sample - lastSample)
+        sumDelta = sumDelta + delta
+        lastSample = sample
+      end
+      
+      averageDelta = sumDelta / sampleCount
+    end
+  end
+  
+  particleSystem:setEmissionRate(averageDelta * 1000.0)
   particleSystem:setSpeed(100.0, 150.0)
   particleSystem:setDirection( -90.0 * degToRad)
   particleSystem:setSpread( 30.0 * degToRad)
@@ -66,8 +106,15 @@ function love.draw()
   love.graphics.push()
   love.graphics.translate(window.translatex, window.translatey)
 	love.graphics.scale(window.scale)
+  love.graphics.print(averageDelta, 400, 300)
 
   love.graphics.draw(particleSystem)
   
   love.graphics.pop()
+end
+
+function love.quit()
+  if mic_recording then
+    mic:stop()
+  end
 end
